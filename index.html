@@ -175,8 +175,8 @@
                                     <span class="text-xs font-semibold px-2 py-1 rounded-full bg-red-100 text-red-700">High Priority</span>
                                 </div>
                                 <div class="flex items-center space-x-2">
-                                    <button class="text-indigo-600 hover:text-indigo-800 text-sm">Edit</button>
-                                    <button class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                                    <button class="text-indigo-600 hover:text-indigo-800 text-sm" data-action="edit">Edit</button>
+                                    <button class="text-red-600 hover:text-red-800 text-sm" data-action="delete">Delete</button>
                                 </div>
                             </li>
                         </ul>
@@ -261,7 +261,7 @@
                                 </div>
                                 <div class="flex items-center space-x-2">
                                     <button class="text-green-600 hover:text-green-800 text-sm" data-action="mark-paid">Mark Paid</button>
-                                    <button class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                                    <button class="text-red-600 hover:text-red-800 text-sm" data-action="delete">Delete</button>
                                 </div>
                             </li>
                         </ul>
@@ -331,7 +331,7 @@
         // Go to your Google Apps Script project -> Deploy -> New deployment -> Select Web App
         // Set 'Execute as' to 'Me' and 'Who has access' to 'Anyone'.
         // Copy the 'Web app URL' and paste it here.
-        const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwHMI9ec62DCaybY_xkt1mNsMU386_rRdzEghRDjPKFBASOYZtmxzo7I8hI5yZ4Ajqk/exec'; // <-- UPDATE THIS!
+        const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbx3wS7MGlP7ajpDazCt5Z0zUq3avEC5NepB57QKkElNDZBeAATAdIpnXVY8Bf0NCUtn/exec'; // <-- UPDATE THIS!
 
         // Your Google Client ID for Google Sign-In
         const GOOGLE_CLIENT_ID = '1002169625554-unvki9hv6ekq1l1gdm3b7tbhpf3gjafc.apps.googleusercontent.com';
