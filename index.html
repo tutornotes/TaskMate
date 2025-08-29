@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Task Manager</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts - Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Platform Library for Sign-In -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+        .app-container {
+            max-width: 100vw;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #ffffff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: relative; /* For the loading overlay */
+        }
+        .main-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding-bottom: 70px; /* Space for bottom navigation */
+        }
+        .nav-button.active {
+            color: #4f46e5; /* Indigo 600 */
+            font-weight: 600;
+        }
+        /* Custom scrollbar for better aesthetics */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        /* Modal styling */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #4f46e5;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex justify-center items-start min-h-screen">
+    <div id="app-container" class="app-container w-full md:w-3/4 lg:w-1/2 xl:w-1/3 rounded-lg overflow-hidden">
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="modal-overlay hidden">
+            <div class="flex flex-col items-center">
+                <div class="spinner mb-4"></div>
+                <p class="text-white text-lg font-medium">Processing...</p>
+            </div>
+        </div>
+
+        <!-- Custom Alert Modal -->
+        <div id="custom-alert-modal" class="modal-overlay hidden">
+            <div class="modal-content">
+                <h3 id="alert-title" class="text-xl font-semibold mb-4 text-gray-800">Alert</h3>
+                <p id="alert-message" class="text-gray-700 mb-6"></p>
+                <button id="alert-ok-button" class="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">OK</button>
+            </div>
+        </div>
+
+        <!-- Login Section -->
+        <section id="login-section" class="flex flex-col items-center justify-center p-6 h-screen w-full">
+            <h1 class="text-4xl font-extrabold text-indigo-700 mb-6">AI Task Manager</h1>
+            <p class="text-lg text-gray-600 mb-8 text-center">Your smart assistant for tasks, groceries, and bills.</p>
+            <div id="g_id_onload"
+                data-client_id="YOUR_GOOGLE_CLIENT_ID" <!-- REPLACE THIS WITH YOUR ACTUAL GOOGLE CLIENT ID -->
+                data-callback="handleCredentialResponse"
+                data-auto_prompt="false">
+            </div>
+            <div class="g_id_signin"
+                data-type="standard"
+                data-size="large"
+                data-theme="outline"
+                data-text="sign_in_with"
+                data-shape="rectangular"
+                data-logo_alignment="left">
+            </div>
+            <p id="login-status" class="mt-4 text-red-500 hidden">Login failed. Please try again.</p>
+        </section>
+
+        <!-- Main App Content (Hidden until login) -->
+        <div id="app-content" class="hidden flex-col flex-grow">
+            <!-- Header -->
+            <header class="bg-indigo-700 text-white p-4 flex items-center justify-between shadow-md rounded-b-lg">
+                <h1 class="text-2xl font-bold">Smart Assistant</h1>
+                <div class="flex items-center">
+                    <span id="user-name" class="mr-3 text-lg"></span>
+                    <button id="sign-out-button" class="bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-1 px-3 rounded-md text-sm transition duration-200">
+                        Sign Out
+                    </button>
+                </div>
+            </header>
+
+            <div class="main-content p-4">
+                <!-- Task Manager Section -->
+                <section id="task-manager-section" class="app-section">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">AI Task Manager</h2>
+
+                    <!-- Add Task Form -->
+                    <div class="bg-gray-50 p-4 rounded-xl shadow-sm mb-6">
+                        <h3 class="text-xl font-semibold mb-3 text-gray-700">Add New Task</h3>
+                        <input type="text" id="new-task-title" placeholder="Task Title" class="w-full p-3 mb-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
+                        <textarea id="new-task-description" placeholder="Description (optional)" class="w-full p-3 mb-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+                        <select id="new-task-priority" class="w-full p-3 mb-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="Low">Low</option>
+                            <option value="Medium" selected>Medium</option>
+                            <option value="High">High</option>
+                        </select>
+                        <input type="date" id="new-task-due-date" class="w-full p-3 mb-4 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
+                        <button id="add-task-button" class="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition duration-200 shadow-md">Add Task</button>
+                    </div>
+
+                    <!-- Tasks List -->
+                    <div class="bg-gray-50 p-4 rounded-xl shadow-sm mb-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-semibold text-gray-700">Your Tasks</h3>
+                            <button id="prioritize-tasks-button" class="px-4 py-2 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 transition duration-200">
+                                AI Prioritize
+                            </button>
+                        </div>
+                        <ul id="tasks-list" class="space-y-3">
+                            <!-- Task items will be dynamically loaded here -->
+                            <li class="bg-white p-4 rounded-lg shadow-sm flex items-center justify-between">
+                                <div>
+                                    <h4 class="font-medium text-lg">Example Task</h4>
+                                    <p class="text-sm text-gray-500">Description here. Due: 2025-12-31</p>
+                                    <span class="text-xs font-semibold px-2 py-1 rounded-full bg-red-100 text-red-700">High Priority</span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <button class="text-indigo-600 hover:text-indigo-800 text-sm">Edit</button>
+                                    <button class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- Grocery Management Section -->
+                <section id="grocery-management-section" class="app-section hidden">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Grocery Management</h2>
+
+                    <!-- Add Grocery Item Form -->
+                    <div class="bg-gray-50 p-4 rounded-xl shadow-sm mb-6">
+                        <h3 class="text-xl font-semibold mb-3 text-gray-700">Add to Grocery List</h3>
+                        <input type="text" id="new-grocery-item" placeholder="Grocery Item" class="w-full p-3 mb-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
+                        <button id="add-grocery-item-button" class="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition duration-200 shadow-md">Add Item</button>
+                    </div>
+
+                    <!-- Grocery List -->
+                    <div class="bg-gray-50 p-4 rounded-xl shadow-sm mb-6">
+                        <h3 class="text-xl font-semibold mb-4 text-gray-700">Your Grocery List</h3>
+                        <ul id="grocery-list" class="space-y-3">
+                            <!-- Grocery items will be dynamically loaded here -->
+                            <li class="bg-white p-4 rounded-lg shadow-sm flex items-center justify-between">
+                                <label class="flex items-center">
+                                    <input type="checkbox" class="form-checkbox h-5 w-5 text-green-600 rounded mr-3">
+                                    <span class="text-lg">Milk</span>
+                                </label>
+                                <button class="text-red-600 hover:text-red-800 text-sm">Remove</button>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Receipt Upload/Entry & Analysis -->
+                    <div class="bg-gray-50 p-4 rounded-xl shadow-sm mb-6">
+                        <h3 class="text-xl font-semibold mb-3 text-gray-700">Analyze Receipt</h3>
+                        <textarea id="receipt-text" placeholder="Paste receipt text or upload an image" class="w-full p-3 mb-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 h-24"></textarea>
+                        <input type="file" id="receipt-image-upload" accept="image/*" class="w-full p-3 mb-4 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
+                        <button id="analyze-receipt-button" class="w-full py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition duration-200 shadow-md">Analyze Receipt</button>
+                        <div id="receipt-analysis-results" class="mt-4 p-3 bg-white rounded-lg hidden">
+                            <h4 class="font-medium text-lg mb-2">Analysis:</h4>
+                            <p id="receipt-analysis-text" class="text-sm text-gray-700"></p>
+                        </div>
+                    </div>
+
+                    <!-- Monthly/Weekly Expense Insights -->
+                    <div class="bg-gray-50 p-4 rounded-xl shadow-sm">
+                        <h3 class="text-xl font-semibold mb-4 text-gray-700">Grocery Expense Insights</h3>
+                        <canvas id="groceryChart"></canvas>
+                        <p id="grocery-insights-text" class="mt-4 text-sm text-gray-700"></p>
+                    </div>
+                </section>
+
+                <!-- Bill Management Section -->
+                <section id="bill-management-section" class="app-section hidden">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Bill Management</h2>
+
+                    <!-- Add Bill Form -->
+                    <div class="bg-gray-50 p-4 rounded-xl shadow-sm mb-6">
+                        <h3 class="text-xl font-semibold mb-3 text-gray-700">Add New Bill</h3>
+                        <input type="text" id="new-bill-name" placeholder="Bill Name (e.g., Electricity)" class="w-full p-3 mb-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
+                        <input type="number" id="new-bill-amount" placeholder="Amount" class="w-full p-3 mb-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500" step="0.01">
+                        <input type="date" id="new-bill-due-date" class="w-full p-3 mb-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
+                        <select id="new-bill-frequency" class="w-full p-3 mb-4 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="Monthly">Monthly</option>
+                            <option value="Quarterly">Quarterly</option>
+                            <option value="Annually">Annually</option>
+                            <option value="One-time">One-time</option>
+                        </select>
+                        <button id="add-bill-button" class="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition duration-200 shadow-md">Add Bill</button>
+                    </div>
+
+                    <!-- Bills List -->
+                    <div class="bg-gray-50 p-4 rounded-xl shadow-sm mb-6">
+                        <h3 class="text-xl font-semibold mb-4 text-gray-700">Your Bills</h3>
+                        <ul id="bills-list" class="space-y-3">
+                            <!-- Bill items will be dynamically loaded here -->
+                            <li class="bg-white p-4 rounded-lg shadow-sm flex items-center justify-between">
+                                <div>
+                                    <h4 class="font-medium text-lg">Electricity Bill</h4>
+                                    <p class="text-sm text-gray-500">₹1500.00 | Due: 2025-09-10</p>
+                                    <span class="text-xs font-semibold px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">Monthly</span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <button class="text-green-600 hover:text-green-800 text-sm">Mark Paid</button>
+                                    <button class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Expense Reports & Payment History Analysis -->
+                    <div class="bg-gray-50 p-4 rounded-xl shadow-sm">
+                        <h3 class="text-xl font-semibold mb-4 text-gray-700">Bill Payment Analysis</h3>
+                        <canvas id="billChart"></canvas>
+                        <p id="bill-insights-text" class="mt-4 text-sm text-gray-700"></p>
+                    </div>
+                </section>
+
+                <!-- Insights/Dashboard Section -->
+                <section id="insights-section" class="app-section hidden">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Insights Dashboard</h2>
+
+                    <div class="bg-gray-50 p-4 rounded-xl shadow-sm mb-6">
+                        <h3 class="text-xl font-semibold mb-4 text-gray-700">Overall Spending</h3>
+                        <canvas id="spendingChart"></canvas>
+                    </div>
+
+                    <div class="bg-gray-50 p-4 rounded-xl shadow-sm mb-6">
+                        <h3 class="text-xl font-semibold mb-4 text-gray-700">Task Productivity</h3>
+                        <canvas id="taskProductivityChart"></canvas>
+                    </div>
+
+                    <div class="bg-gray-50 p-4 rounded-xl shadow-sm">
+                        <h3 class="text-xl font-semibold mb-4 text-gray-700">AI Financial Tips</h3>
+                        <p id="ai-financial-tips" class="text-sm text-gray-700">
+                            <!-- AI-generated tips will be loaded here -->
+                            Based on your spending patterns, consider reviewing subscriptions you rarely use.
+                        </p>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Bottom Navigation -->
+            <nav class="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-lg flex justify-around p-3 z-50 rounded-t-lg">
+                <button class="nav-button flex flex-col items-center text-gray-500 hover:text-indigo-600 transition duration-200 active" data-section="task-manager">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                    <span class="text-xs mt-1">Tasks</span>
+                </button>
+                <button class="nav-button flex flex-col items-center text-gray-500 hover:text-indigo-600 transition duration-200" data-section="grocery-management">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+                    <span class="text-xs mt-1">Grocery</span>
+                </button>
+                <button class="nav-button flex flex-col items-center text-gray-500 hover:text-indigo-600 transition duration-200" data-section="bill-management">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 1v16h8V7l-6-6H9zm0 0V.5L14.5 6H9z"></path></svg>
+                    <span class="text-xs mt-1">Bills</span>
+                </button>
+                <button class="nav-button flex flex-col items-center text-gray-500 hover:text-indigo-600 transition duration-200" data-section="insights">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
+                    <span class="text-xs mt-1">Insights</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- Frontend-Backend Connection Indicator -->
+        <div id="connection-indicator" class="fixed bottom-16 left-0 right-0 p-2 text-center text-sm font-medium rounded-t-md hidden">
+            <span id="connection-status" class="text-gray-600">Backend: Connecting...</span>
+        </div>
+    </div>
+
+    <script>
+        // IMPORTANT: Replace this with your Google Apps Script Web App URL after deployment.
+        // Go to your Google Apps Script project -> Deploy -> New deployment -> Select Web App
+        // Set 'Execute as' to 'Me' and 'Who has access' to 'Anyone'.
+        // Copy the 'Web app URL' and paste it here.
+        const APPS_SCRIPT_WEB_APP_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL'; // <-- UPDATE THIS!
+
+        // IMPORTANT: Replace this with your actual Google Client ID from Google Cloud Console.
+        // This is for Google Sign-In.
+        // Go to Google Cloud Console -> APIs & Services -> Credentials -> Create Credentials -> OAuth client ID
+        // Choose 'Web application', add your deployed web app URL (e.g., if you host on GitHub Pages)
+        // or just 'http://localhost' for local development under 'Authorized JavaScript origins'.
+        const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID'; // <-- UPDATE THIS!
+
+        // Update the g_id_onload data-client_id dynamically
+        document.getElementById('g_id_onload').setAttribute('data-client_id', GOOGLE_CLIENT_ID);
+
+
+        let currentUser = null; // Stores Google user info
+        let userId = null;      // Stores the user's unique ID for backend
+
+        // --- UI Elements ---
+        const loginSection = document.getElementById('login-section');
+        const appContent = document.getElementById('app-content');
+        const userNameSpan = document.getElementById('user-name');
+        const signOutButton = document.getElementById('sign-out-button');
+        const loginStatus = document.getElementById('login-status');
+        const connectionIndicator = document.getElementById('connection-indicator');
+        const connectionStatus = document.getElementById('connection-status');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const customAlertModal = document.getElementById('custom-alert-modal');
+        const alertTitle = document.getElementById('alert-title');
+        const alertMessage = document.getElementById('alert-message');
+        const alertOkButton = document.getElementById('alert-ok-button');
+
+        // Nav Buttons
+        const navButtons = document.querySelectorAll('.nav-button');
+        const sections = document.querySelectorAll('.app-section');
+
+        // Task Manager Elements
+        const newTaskTitleInput = document.getElementById('new-task-title');
+        const newTaskDescriptionInput = document.getElementById('new-task-description');
+        const newTaskPrioritySelect = document.getElementById('new-task-priority');
+        const newTaskDueDateInput = document.getElementById('new-task-due-date');
+        const addTaskButton = document.getElementById('add-task-button');
+        const tasksList = document.getElementById('tasks-list');
+        const prioritizeTasksButton = document.getElementById('prioritize-tasks-button');
+
+        // Grocery Management Elements
+        const newGroceryItemInput = document.getElementById('new-grocery-item');
+        const addGroceryItemButton = document.getElementById('add-grocery-item-button');
+        const groceryList = document.getElementById('grocery-list');
+        const receiptTextInput = document.getElementById('receipt-text');
+        const receiptImageUploadInput = document.getElementById('receipt-image-upload');
+        const analyzeReceiptButton = document.getElementById('analyze-receipt-button');
+        const receiptAnalysisResults = document.getElementById('receipt-analysis-results');
+        const receiptAnalysisText = document.getElementById('receipt-analysis-text');
+        const groceryChartCanvas = document.getElementById('groceryChart');
+        let groceryChart = null;
+        const groceryInsightsText = document.getElementById('grocery-insights-text');
+
+        // Bill Management Elements
+        const newBillNameInput = document.getElementById('new-bill-name');
+        const newBillAmountInput = document.getElementById('new-bill-amount');
+        const newBillDueDateInput = document.getElementById('new-bill-due-date');
+        const newBillFrequencySelect = document.getElementById('new-bill-frequency');
+        const addBillButton = document.getElementById('add-bill-button');
+        const billsList = document.getElementById('bills-list');
+        const billChartCanvas = document.getElementById('billChart');
+        let billChart = null;
+        const billInsightsText = document.getElementById('bill-insights-text');
+
+        // Insights Elements
+        const spendingChartCanvas = document.getElementById('spendingChart');
+        let spendingChart = null;
+        const taskProductivityChartCanvas = document.getElementById('taskProductivityChart');
+        let taskProductivityChart = null;
+        const aiFinancialTips = document.getElementById('ai-financial-tips');
+
+
+        // --- Utility Functions ---
+
+        /**
+         * Displays the custom alert modal.
+         * @param {string} title
+         * @param {string} message
+         */
+        function showAlert(title, message) {
+            alertTitle.textContent = title;
+            alertMessage.textContent = message;
+            customAlertModal.classList.remove('hidden');
+        }
+
+        alertOkButton.addEventListener('click', () => {
+            customAlertModal.classList.add('hidden');
+        });
+
+        /**
+         * Shows the loading overlay.
+         */
+        function showLoading() {
+            loadingOverlay.classList.remove('hidden');
+        }
+
+        /**
+         * Hides the loading overlay.
+         */
+        function hideLoading() {
+            loadingOverlay.classList.add('hidden');
+        }
+
+        /**
+         * Converts a File object to a Base64 string.
+         * @param {File} file
+         * @returns {Promise<string>} Base64 string
+         */
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]); // Get base64 part
+                reader.onerror = error => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        /**
+         * Makes a fetch request to the Google Apps Script backend with exponential backoff.
+         * @param {Object} data - The payload for the backend.
+         * @param {number} retries - Number of retries.
+         * @param {number} delay - Initial delay in ms.
+         * @returns {Promise<Object>} The JSON response from the backend.
+         */
+        async function callBackend(data, retries = 3, delay = 1000) {
+            if (!APPS_SCRIPT_WEB_APP_URL || APPS_SCRIPT_WEB_APP_URL === 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL') {
+                showAlert('Configuration Error', 'Please update APPS_SCRIPT_WEB_APP_URL in script.js with your deployed Google Apps Script URL.');
+                connectionStatus.textContent = 'Backend: Config Error';
+                connectionStatus.classList.remove('text-gray-600', 'text-green-600');
+                connectionStatus.classList.add('text-red-600');
+                return null;
+            }
+
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(APPS_SCRIPT_WEB_APP_URL, {
+                        method: 'POST',
+                        mode: 'no-cors', // Required for Apps Script web apps, actual response body not accessible
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: new URLSearchParams({
+                            payload: JSON.stringify(data)
+                        })
+                    });
+
+                    // For 'no-cors' mode, we can't directly read response.json().
+                    // The Apps Script will typically redirect, and the success is indicated by no error.
+                    // The actual data needs to be fetched separately, usually by making a GET request
+                    // to the script which then returns the stored result for the user.
+                    // For now, we assume success if no error is thrown and update connection status.
+                    connectionStatus.textContent = 'Backend: Connected';
+                    connectionStatus.classList.remove('text-gray-600', 'text-red-600');
+                    connectionStatus.classList.add('text-green-600');
+
+                    // In a real scenario, you'd make a subsequent GET request to retrieve data
+                    // after a POST operation in no-cors mode, or use a JSONP approach.
+                    // For this setup, we'll simulate a successful "response" for POSTs
+                    // and rely on specific GET requests to fetch data after mutations.
+                    return { status: 'success' }; // Placeholder for successful POST
+
+                } catch (error) {
+                    console.error(`Backend call failed (attempt ${i + 1}/${retries}):`, error);
+                    connectionStatus.textContent = 'Backend: Error';
+                    connectionStatus.classList.remove('text-gray-600', 'text-green-600');
+                    connectionStatus.classList.add('text-red-600');
+                    if (i < retries - 1) {
+                        await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
+                    } else {
+                        showAlert('Backend Error', 'Could not connect to the backend. Please check your Apps Script URL and deployment.');
+                        return null;
+                    }
+                }
+            }
+        }
+
+        /**
+         * Fetches data from the backend using a GET request (for actual data retrieval after a POST or for initial load).
+         * @param {Object} params - Query parameters for the GET request.
+         * @param {number} retries - Number of retries.
+         * @param {number} delay - Initial delay in ms.
+         * @returns {Promise<Object>} The JSON response from the backend.
+         */
+        async function fetchDataFromBackend(params, retries = 3, delay = 1000) {
+            if (!APPS_SCRIPT_WEB_APP_URL || APPS_SCRIPT_WEB_APP_URL === 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL') {
+                showAlert('Configuration Error', 'Please update APPS_SCRIPT_WEB_APP_URL in script.js with your deployed Google Apps Script URL.');
+                connectionStatus.textContent = 'Backend: Config Error';
+                connectionStatus.classList.remove('text-gray-600', 'text-green-600');
+                connectionStatus.classList.add('text-red-600');
+                return null;
+            }
+
+            const queryString = new URLSearchParams(params).toString();
+            const url = `${APPS_SCRIPT_WEB_APP_URL}?${queryString}`;
+
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, { method: 'GET' });
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    connectionStatus.textContent = 'Backend: Connected';
+                    connectionStatus.classList.remove('text-gray-600', 'text-red-600');
+                    connectionStatus.classList.add('text-green-600');
+                    return data;
+                } catch (error) {
+                    console.error(`Backend GET request failed (attempt ${i + 1}/${retries}):`, error);
+                    connectionStatus.textContent = 'Backend: Error';
+                    connectionStatus.classList.remove('text-gray-600', 'text-green-600');
+                    connectionStatus.classList.add('text-red-600');
+                    if (i < retries - 1) {
+                        await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
+                    } else {
+                        showAlert('Backend Error', 'Could not fetch data from the backend. Please check your Apps Script URL and deployment.');
+                        return null;
+                    }
+                }
+            }
+        }
+
+
+        // --- Google Sign-In Handling ---
+
+        /**
+         * Handles the credential response from Google Sign-In.
+         * @param {Object} response - The credential response object.
+         */
+        async function handleCredentialResponse(response) {
+            if (response.credential) {
+                // Send the ID token to your backend for verification
+                const idToken = response.credential;
+                showLoading();
+                const backendResponse = await callBackend({
+                    action: 'verifyToken',
+                    idToken: idToken
+                });
+                hideLoading();
+
+                if (backendResponse && backendResponse.status === 'success') {
+                    // In a real setup, backendResponse would contain user details verified by Apps Script.
+                    // For 'no-cors' mode, we assume success and then try to fetch user data.
+                    // For now, we'll parse the ID token to get user info.
+                    const payload = JSON.parse(atob(idToken.split('.')[1])); // Decode JWT payload
+                    currentUser = payload;
+                    userId = payload.sub; // Google User ID
+
+                    userNameSpan.textContent = `Hello, ${currentUser.given_name || currentUser.name || 'User'}!`;
+                    loginSection.classList.add('hidden');
+                    appContent.classList.remove('hidden');
+                    connectionIndicator.classList.remove('hidden');
+                    await loadAppData(); // Load user-specific data
+                } else {
+                    loginStatus.textContent = 'Login failed. Please try again.';
+                    loginStatus.classList.remove('hidden');
+                    console.error('Backend token verification failed.');
+                }
+            } else {
+                console.error('Google Sign-In credential not received.');
+                loginStatus.textContent = 'Login cancelled or failed.';
+                loginStatus.classList.remove('hidden');
+            }
+        }
+
+        /**
+         * Handles user sign-out.
+         */
+        function handleSignOut() {
+            currentUser = null;
+            userId = null;
+            userNameSpan.textContent = '';
+            appContent.classList.add('hidden');
+            loginSection.classList.remove('hidden');
+            connectionIndicator.classList.add('hidden');
+            loginStatus.classList.add('hidden'); // Clear previous login errors
+            // You might want to revoke token or clear session in backend too.
+        }
+
+        signOutButton.addEventListener('click', handleSignOut);
+
+
+        // --- Navigation Logic ---
+
+        /**
+         * Displays the selected section and updates active navigation button.
+         * @param {string} sectionId - The ID of the section to display.
+         */
+        function showSection(sectionId) {
+            sections.forEach(section => {
+                section.classList.add('hidden');
+            });
+            document.getElementById(`${sectionId}-section`).classList.remove('hidden');
+
+            navButtons.forEach(button => {
+                button.classList.remove('active');
+                button.classList.remove('text-indigo-600');
+                button.classList.add('text-gray-500');
+            });
+            document.querySelector(`.nav-button[data-section="${sectionId}"]`).classList.add('active');
+            document.querySelector(`.nav-button[data-section="${sectionId}"]`).classList.add('text-indigo-600');
+            document.querySelector(`.nav-button[data-section="${sectionId}"]`).classList.remove('text-gray-500');
+
+            // Initialize charts if they haven't been or redraw if needed for responsiveness
+            if (sectionId === 'grocery-management' && !groceryChart) renderGroceryChart();
+            if (sectionId === 'bill-management' && !billChart) renderBillChart();
+            if (sectionId === 'insights' && !spendingChart) renderSpendingChart();
+            if (sectionId === 'insights' && !taskProductivityChart) renderTaskProductivityChart();
+        }
+
+        navButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const section = button.dataset.section;
+                showSection(section);
+            });
+        });
+
+        // Set initial section to Task Manager
+        showSection('task-manager');
+
+        // --- Core App Logic (CRUD operations and AI integration) ---
+
+        /**
+         * Loads all user-specific data from the backend.
+         */
+        async function loadAppData() {
+            if (!userId) {
+                console.warn('User not logged in, cannot load app data.');
+                return;
+            }
+            showLoading();
+            // Fetch all data for the user
+            const data = await fetchDataFromBackend({
+                action: 'getAllUserData',
+                userId: userId
+            });
+            hideLoading();
+
+            if (data) {
+                displayTasks(data.tasks || []);
+                displayGroceryList(data.groceryList || []);
+                displayBills(data.bills || []);
+                // Update charts and insights with fetched data
+                updateChartsAndInsights(data);
+            }
+        }
+
+        // --- Task Manager Functions ---
+
+        /**
+         * Displays tasks in the UI.
+         * @param {Array<Object>} tasks - Array of task objects.
+         */
+        function displayTasks(tasks) {
+            tasksList.innerHTML = ''; // Clear existing tasks
+            if (tasks.length === 0) {
+                tasksList.innerHTML = '<li class="text-gray-500 p-4">No tasks found. Add a new one!</li>';
+                return;
+            }
+
+            tasks.forEach(task => {
+                const li = document.createElement('li');
+                li.className = 'bg-white p-4 rounded-lg shadow-sm flex items-center justify-between transition duration-200 hover:shadow-md';
+                li.setAttribute('data-id', task.id);
+                li.innerHTML = `
+                    <div>
+                        <h4 class="font-medium text-lg ${task.completed ? 'line-through text-gray-400' : 'text-gray-800'}">${task.title}</h4>
+                        <p class="text-sm text-gray-500">${task.description || 'No description'}. Due: ${task.dueDate || 'N/A'}</p>
+                        <span class="text-xs font-semibold px-2 py-1 rounded-full ${getPriorityBadgeClass(task.priority)}">${task.priority} Priority</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <input type="checkbox" class="form-checkbox h-5 w-5 text-indigo-600 rounded" ${task.completed ? 'checked' : ''} data-action="toggle-complete">
+                        <button class="text-indigo-600 hover:text-indigo-800 text-sm" data-action="edit">Edit</button>
+                        <button class="text-red-600 hover:text-red-800 text-sm" data-action="delete">Delete</button>
+                    </div>
+                `;
+                tasksList.appendChild(li);
+            });
+        }
+
+        /**
+         * Returns Tailwind CSS classes for priority badges.
+         * @param {string} priority - The priority level (Low, Medium, High).
+         * @returns {string} CSS classes for the badge.
+         */
+        function getPriorityBadgeClass(priority) {
+            switch (priority) {
+                case 'High': return 'bg-red-100 text-red-700';
+                case 'Medium': return 'bg-yellow-100 text-yellow-700';
+                case 'Low': return 'bg-green-100 text-green-700';
+                case 'AI-High': return 'bg-pink-100 text-pink-700 border border-pink-500'; // For AI-prioritized
+                case 'AI-Medium': return 'bg-orange-100 text-orange-700 border border-orange-500';
+                case 'AI-Low': return 'bg-teal-100 text-teal-700 border border-teal-500';
+                default: return 'bg-gray-100 text-gray-700';
+            }
+        }
+
+        /**
+         * Adds a new task.
+         */
+        addTaskButton.addEventListener('click', async () => {
+            const title = newTaskTitleInput.value.trim();
+            const description = newTaskDescriptionInput.value.trim();
+            const priority = newTaskPrioritySelect.value;
+            const dueDate = newTaskDueDateInput.value;
+
+            if (!title) {
+                showAlert('Input Error', 'Task title cannot be empty.');
+                return;
+            }
+
+            showLoading();
+            const response = await callBackend({
+                action: 'addTask',
+                userId: userId,
+                task: { title, description, priority, dueDate, completed: false, id: Date.now().toString() } // Client-side ID for immediate display
+            });
+            hideLoading();
+
+            if (response && response.status === 'success') {
+                newTaskTitleInput.value = '';
+                newTaskDescriptionInput.value = '';
+                newTaskPrioritySelect.value = 'Medium';
+                newTaskDueDateInput.value = '';
+                loadAppData(); // Reload all data to get proper IDs and reflect changes
+            }
+        });
+
+        tasksList.addEventListener('click', async (event) => {
+            const listItem = event.target.closest('li');
+            if (!listItem) return;
+
+            const taskId = listItem.dataset.id;
+            if (!taskId) return;
+
+            const action = event.target.dataset.action;
+
+            if (action === 'delete') {
+                if (!confirm('Are you sure you want to delete this task?')) return; // Using browser confirm for now, will replace with custom modal
+
+                showLoading();
+                const response = await callBackend({
+                    action: 'deleteTask',
+                    userId: userId,
+                    taskId: taskId
+                });
+                hideLoading();
+
+                if (response && response.status === 'success') {
+                    loadAppData();
+                }
+            } else if (action === 'edit') {
+                // For editing, you would typically open a modal pre-filled with task data
+                showAlert('Feature Coming Soon', 'Task editing functionality will be implemented here.');
+            } else if (event.target.type === 'checkbox' && action === 'toggle-complete') {
+                const isCompleted = event.target.checked;
+                showLoading();
+                const response = await callBackend({
+                    action: 'updateTaskStatus',
+                    userId: userId,
+                    taskId: taskId,
+                    completed: isCompleted
+                });
+                hideLoading();
+                if (response && response.status === 'success') {
+                    loadAppData(); // Reload to update UI
+                }
+            }
+        });
+
+        /**
+         * Calls AI to prioritize tasks.
+         */
+        prioritizeTasksButton.addEventListener('click', async () => {
+            showLoading();
+            const response = await fetchDataFromBackend({
+                action: 'prioritizeTasks',
+                userId: userId
+            });
+            hideLoading();
+
+            if (response && response.prioritizedTasks) {
+                showAlert('AI Prioritization Complete', 'Tasks have been re-prioritized by AI.');
+                displayTasks(response.prioritizedTasks); // Display tasks with new AI priority
+            } else if (response && response.error) {
+                showAlert('AI Error', response.error);
+            } else {
+                showAlert('AI Error', 'Could not prioritize tasks. Please try again.');
+            }
+        });
+
+
+        // --- Grocery Management Functions ---
+
+        /**
+         * Displays grocery list in the UI.
+         * @param {Array<Object>} items - Array of grocery item objects.
+         */
+        function displayGroceryList(items) {
+            groceryList.innerHTML = '';
+            if (items.length === 0) {
+                groceryList.innerHTML = '<li class="text-gray-500 p-4">Your grocery list is empty.</li>';
+                return;
+            }
+
+            items.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'bg-white p-4 rounded-lg shadow-sm flex items-center justify-between transition duration-200 hover:shadow-md';
+                li.setAttribute('data-id', item.id);
+                li.innerHTML = `
+                    <label class="flex items-center">
+                        <input type="checkbox" class="form-checkbox h-5 w-5 text-green-600 rounded mr-3" ${item.tickedOff ? 'checked' : ''} data-action="toggle-tick">
+                        <span class="text-lg ${item.tickedOff ? 'line-through text-gray-400' : 'text-gray-800'}">${item.name}</span>
+                    </label>
+                    <button class="text-red-600 hover:text-red-800 text-sm" data-action="remove">Remove</button>
+                `;
+                groceryList.appendChild(li);
+            });
+        }
+
+        /**
+         * Adds a new grocery item.
+         */
+        addGroceryItemButton.addEventListener('click', async () => {
+            const itemName = newGroceryItemInput.value.trim();
+            if (!itemName) {
+                showAlert('Input Error', 'Grocery item name cannot be empty.');
+                return;
+            }
+
+            showLoading();
+            const response = await callBackend({
+                action: 'addGroceryItem',
+                userId: userId,
+                item: { name: itemName, tickedOff: false, id: Date.now().toString() }
+            });
+            hideLoading();
+
+            if (response && response.status === 'success') {
+                newGroceryItemInput.value = '';
+                loadAppData();
+            }
+        });
+
+        groceryList.addEventListener('click', async (event) => {
+            const listItem = event.target.closest('li');
+            if (!listItem) return;
+
+            const itemId = listItem.dataset.id;
+            if (!itemId) return;
+
+            const action = event.target.dataset.action;
+
+            if (action === 'remove') {
+                if (!confirm('Are you sure you want to remove this grocery item?')) return;
+
+                showLoading();
+                const response = await callBackend({
+                    action: 'removeGroceryItem',
+                    userId: userId,
+                    itemId: itemId
+                });
+                hideLoading();
+
+                if (response && response.status === 'success') {
+                    loadAppData();
+                }
+            } else if (event.target.type === 'checkbox' && action === 'toggle-tick') {
+                const isTickedOff = event.target.checked;
+                showLoading();
+                const response = await callBackend({
+                    action: 'updateGroceryItemStatus',
+                    userId: userId,
+                    itemId: itemId,
+                    tickedOff: isTickedOff
+                });
+                hideLoading();
+                if (response && response.status === 'success') {
+                    loadAppData();
+                }
+            }
+        });
+
+        /**
+         * Analyzes receipt using AI.
+         */
+        analyzeReceiptButton.addEventListener('click', async () => {
+            const receiptText = receiptTextInput.value.trim();
+            const receiptImageFile = receiptImageUploadInput.files[0];
+
+            if (!receiptText && !receiptImageFile) {
+                showAlert('Input Error', 'Please enter receipt text or upload a receipt image.');
+                return;
+            }
+
+            let base64Image = null;
+            if (receiptImageFile) {
+                showLoading();
+                try {
+                    base64Image = await fileToBase64(receiptImageFile);
+                } catch (error) {
+                    hideLoading();
+                    showAlert('Image Error', 'Could not process image file. Please try again.');
+                    return;
+                }
+            }
+
+            showLoading();
+            const response = await fetchDataFromBackend({
+                action: 'analyzeReceipt',
+                userId: userId,
+                receiptText: receiptText,
+                base64Image: base64Image
+            });
+            hideLoading();
+
+            if (response && response.analysis) {
+                receiptAnalysisText.textContent = response.analysis;
+                receiptAnalysisResults.classList.remove('hidden');
+                // You might also want to update grocery charts/insights here
+                updateChartsAndInsights({ groceryList: response.updatedGroceryList, expenseAnalysis: response.expenseAnalysis });
+            } else if (response && response.error) {
+                showAlert('AI Error', response.error);
+            } else {
+                showAlert('AI Error', 'Could not analyze receipt. Please try again.');
+            }
+        });
+
+        /**
+         * Renders the grocery expense chart.
+         * @param {Array<Object>} data - Chart data.
+         */
+        function renderGroceryChart(data = []) {
+            if (groceryChart) groceryChart.destroy(); // Destroy previous chart if exists
+
+            const labels = data.map(d => d.date);
+            const amounts = data.map(d => d.amount);
+
+            groceryChart = new Chart(groceryChartCanvas, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Grocery Spending',
+                        data: amounts,
+                        borderColor: '#10B981', // Green 500
+                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Amount (₹)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- Bill Management Functions ---
+
+        /**
+         * Displays bills in the UI.
+         * @param {Array<Object>} bills - Array of bill objects.
+         */
+        function displayBills(bills) {
+            billsList.innerHTML = '';
+            if (bills.length === 0) {
+                billsList.innerHTML = '<li class="text-gray-500 p-4">No bills tracked. Add a new one!</li>';
+                return;
+            }
+
+            bills.forEach(bill => {
+                const li = document.createElement('li');
+                li.className = `bg-white p-4 rounded-lg shadow-sm flex items-center justify-between transition duration-200 hover:shadow-md ${bill.paid ? 'opacity-70' : ''}`;
+                li.setAttribute('data-id', bill.id);
+                li.innerHTML = `
+                    <div>
+                        <h4 class="font-medium text-lg ${bill.paid ? 'line-through text-gray-400' : 'text-gray-800'}">${bill.name}</h4>
+                        <p class="text-sm text-gray-500">₹${bill.amount ? bill.amount.toFixed(2) : '0.00'} | Due: ${bill.dueDate || 'N/A'}</p>
+                        <span class="text-xs font-semibold px-2 py-1 rounded-full ${getFrequencyBadgeClass(bill.frequency)}">${bill.frequency}</span>
+                        ${bill.paid ? '<span class="ml-2 text-xs font-semibold px-2 py-1 rounded-full bg-green-100 text-green-700">Paid</span>' : ''}
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        ${!bill.paid ? `<button class="text-green-600 hover:text-green-800 text-sm" data-action="mark-paid">Mark Paid</button>` : ''}
+                        <button class="text-red-600 hover:text-red-800 text-sm" data-action="delete">Delete</button>
+                    </div>
+                `;
+                billsList.appendChild(li);
+            });
+        }
+
+        /**
+         * Returns Tailwind CSS classes for bill frequency badges.
+         * @param {string} frequency - The bill frequency.
+         * @returns {string} CSS classes for the badge.
+         */
+        function getFrequencyBadgeClass(frequency) {
+            switch (frequency) {
+                case 'Monthly': return 'bg-blue-100 text-blue-700';
+                case 'Quarterly': return 'bg-yellow-100 text-yellow-700';
+                case 'Annually': return 'bg-purple-100 text-purple-700';
+                default: return 'bg-gray-100 text-gray-700';
+            }
+        }
+
+        /**
+         * Adds a new bill.
+         */
+        addBillButton.addEventListener('click', async () => {
+            const name = newBillNameInput.value.trim();
+            const amount = parseFloat(newBillAmountInput.value);
+            const dueDate = newBillDueDateInput.value;
+            const frequency = newBillFrequencySelect.value;
+
+            if (!name || isNaN(amount) || amount <= 0 || !dueDate) {
+                showAlert('Input Error', 'Please enter valid bill name, amount, and due date.');
+                return;
+            }
+
+            showLoading();
+            const response = await callBackend({
+                action: 'addBill',
+                userId: userId,
+                bill: { name, amount, dueDate, frequency, paid: false, id: Date.now().toString() }
+            });
+            hideLoading();
+
+            if (response && response.status === 'success') {
+                newBillNameInput.value = '';
+                newBillAmountInput.value = '';
+                newBillDueDateInput.value = '';
+                newBillFrequencySelect.value = 'Monthly';
+                loadAppData();
+            }
+        });
+
+        billsList.addEventListener('click', async (event) => {
+            const listItem = event.target.closest('li');
+            if (!listItem) return;
+
+            const billId = listItem.dataset.id;
+            if (!billId) return;
+
+            const action = event.target.dataset.action;
+
+            if (action === 'delete') {
+                if (!confirm('Are you sure you want to delete this bill?')) return;
+
+                showLoading();
+                const response = await callBackend({
+                    action: 'deleteBill',
+                    userId: userId,
+                    billId: billId
+                });
+                hideLoading();
+
+                if (response && response.status === 'success') {
+                    loadAppData();
+                }
+            } else if (action === 'mark-paid') {
+                showLoading();
+                const response = await callBackend({
+                    action: 'markBillPaid',
+                    userId: userId,
+                    billId: billId,
+                    paidDate: new Date().toISOString().split('T')[0] // Record current date as paid date
+                });
+                hideLoading();
+                if (response && response.status === 'success') {
+                    loadAppData();
+                }
+            }
+        });
+
+        /**
+         * Renders the bill payment timeline chart.
+         * @param {Array<Object>} data - Chart data.
+         */
+        function renderBillChart(data = []) {
+            if (billChart) billChart.destroy();
+
+            const labels = data.map(d => d.dueDate); // Or paid date
+            const amounts = data.map(d => d.amount);
+            const paidStatus = data.map(d => d.paid);
+
+            billChart = new Chart(billChartCanvas, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Bill Amounts',
+                        data: amounts,
+                        backgroundColor: paidStatus.map(paid => paid ? '#34D399' : '#EF4444'), // Green 400 for paid, Red 500 for unpaid
+                        borderColor: paidStatus.map(paid => paid ? '#059669' : '#B91C1C'),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Amount (₹)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Due Date'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(context.parsed.y);
+                                    }
+                                    const index = context.dataIndex;
+                                    label += ` (${paidStatus[index] ? 'Paid' : 'Unpaid'})`;
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- Insights & Dashboard Functions ---
+
+        /**
+         * Updates all charts and insights.
+         * @param {Object} allUserData - All user data including tasks, grocery, bills.
+         */
+        function updateChartsAndInsights(allUserData) {
+            // Placeholder data for charts. In a real scenario, this data would be processed by Apps Script's AI.
+            const sampleGroceryData = [
+                { date: '2025-07-01', amount: 500 },
+                { date: '2025-07-08', amount: 750 },
+                { date: '2025-07-15', amount: 300 },
+                { date: '2025-07-22', amount: 900 },
+                { date: '2025-07-29', amount: 600 },
+            ];
+            renderGroceryChart(sampleGroceryData);
+            groceryInsightsText.textContent = 'Based on your recent grocery spending, you spent an average of ₹610 per week in July.';
+
+            const sampleBillData = [
+                { name: 'Electricity', amount: 1200, dueDate: '2025-08-05', paid: true },
+                { name: 'Internet', amount: 800, dueDate: '2025-08-10', paid: true },
+                { name: 'Credit Card', amount: 5000, dueDate: '2025-08-15', paid: false },
+                { name: 'Water', amount: 300, dueDate: '2025-08-20', paid: true },
+            ];
+            renderBillChart(sampleBillData);
+            billInsightsText.textContent = 'You have one outstanding bill (Credit Card) due on August 15th.';
+
+
+            // Example: Process actual task/bill data for charts.
+            const tasksCompleted = allUserData.tasks ? allUserData.tasks.filter(t => t.completed).length : 0;
+            const tasksTotal = allUserData.tasks ? allUserData.tasks.length : 0;
+            const taskProductivityPercentage = tasksTotal > 0 ? (tasksCompleted / tasksTotal) * 100 : 0;
+
+            renderTaskProductivityChart(taskProductivityPercentage);
+
+            // AI Financial Tips (will be generated by Apps Script's AI)
+            aiFinancialTips.textContent = 'Based on your overall spending and bill payments, consider setting up automated payments for recurring bills to avoid delays and late fees. You are doing great at managing your tasks, keep up the good work!';
+        }
+
+        /**
+         * Renders the overall spending chart.
+         * @param {Array<Object>} data - Chart data for spending categories.
+         */
+        function renderSpendingChart(data = [{ label: 'Grocery', amount: 2500 }, { label: 'Bills', amount: 7300 }, { label: 'Others', amount: 1500 }]) {
+            if (spendingChart) spendingChart.destroy();
+
+            const labels = data.map(d => d.label);
+            const amounts = data.map(d => d.amount);
+
+            spendingChart = new Chart(spendingChartCanvas, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: amounts,
+                        backgroundColor: [
+                            '#4F46E5', // Indigo 600
+                            '#10B981', // Green 500
+                            '#F59E0B', // Amber 500
+                            '#EF4444', // Red 500
+                            '#6366F1'  // Indigo 500
+                        ],
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed !== null) {
+                                        label += new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(context.parsed);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        /**
+         * Renders the task productivity chart.
+         * @param {number} percentage - Percentage of tasks completed.
+         */
+        function renderTaskProductivityChart(percentage = 0) {
+            if (taskProductivityChart) taskProductivityChart.destroy();
+
+            taskProductivityChart = new Chart(taskProductivityChartCanvas, {
+                type: 'bar',
+                data: {
+                    labels: ['Productivity'],
+                    datasets: [{
+                        label: 'Tasks Completed (%)',
+                        data: [percentage],
+                        backgroundColor: percentage >= 75 ? '#10B981' : (percentage >= 50 ? '#F59E0B' : '#EF4444'),
+                        borderColor: percentage >= 75 ? '#059669' : (percentage >= 50 ? '#D97706' : '#B91C1C'),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y', // Horizontal bar chart
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Percentage (%)'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.x.toFixed(2)}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- Initial Backend Connection Test ---
+        async function testBackendConnection() {
+            connectionIndicator.classList.remove('hidden');
+            connectionStatus.textContent = 'Backend: Connecting...';
+            connectionStatus.classList.remove('text-green-600', 'text-red-600');
+            connectionStatus.classList.add('text-gray-600');
+
+            try {
+                // Perform a simple GET request to test connectivity
+                const response = await fetch(`${APPS_SCRIPT_WEB_APP_URL}?action=testConnection`, { method: 'GET' });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success' && data.message === 'Connection OK') {
+                        connectionStatus.textContent = 'Backend: Connected';
+                        connectionStatus.classList.remove('text-gray-600', 'text-red-600');
+                        connectionStatus.classList.add('text-green-600');
+                    } else {
+                        throw new Error('Unexpected test connection response.');
+                    }
+                } else {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Test backend connection failed:', error);
+                connectionStatus.textContent = 'Backend: Error';
+                connectionStatus.classList.remove('text-gray-600', 'text-green-600');
+                connectionStatus.classList.add('text-red-600');
+            }
+        }
+
+        // Call this when the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', () => {
+             // Initial check for Google Client ID and Apps Script URL
+            if (GOOGLE_CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID') {
+                showAlert('Configuration Required', 'Please update YOUR_GOOGLE_CLIENT_ID in the JavaScript code with your actual Google Client ID from Google Cloud Console.');
+            }
+            if (APPS_SCRIPT_WEB_APP_URL === 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL') {
+                showAlert('Configuration Required', 'Please update APPS_SCRIPT_WEB_APP_URL in the JavaScript code with your deployed Google Apps Script URL.');
+            }
+            testBackendConnection();
+        });
+
+    </script>
+</body>
+</html>
